@@ -1,0 +1,49 @@
+name: CD
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to VM via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: course.prafdin.ru
+          port: 3172
+          username: anzorcode
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+
+            APP_DIR="/home/anzorcode/app"
+            REPO_DIR="/home/anzorcode/catty-reminders-app"
+            ENV_FILE="$APP_DIR/.env"
+            COMMIT_SHA="${{ github.sha }}"
+
+            echo "CD Pipeline started"
+            echo "Release commit: $COMMIT_SHA"
+
+            cd $REPO_DIR
+
+            echo "Updating code..."
+            git fetch origin
+            git checkout --detach $COMMIT_SHA
+            git reset --hard $COMMIT_SHA
+
+            DEPLOY_REF=$(git rev-parse HEAD)
+            echo "Commit hash: $DEPLOY_REF"
+
+            echo "DEPLOY_REF=$DEPLOY_REF" > $ENV_FILE
+            echo "Updated .env file"
+
+            echo "Installing dependencies..."
+            pip3 install -r requirements.txt
+
+            echo "Restarting application..."
+            sudo systemctl restart app
+
+            echo "CD Pipeline completed successfully"
