@@ -3,8 +3,12 @@ name: CI
 on:
   push:
     branches:
-      - lab2
-      - lab2_autotests*
+      - lab3
+      - lab3_autotests*
+
+permissions:
+  contents: write
+  packages: write
 
 jobs:
   test:
@@ -14,31 +18,77 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: '3.12'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install uvicorn pytest-playwright
-          playwright install --with-deps chromium
+          pip install pytest pytest-playwright playwright
+          playwright install chromium
 
+      - name: Set PYTHONPATH
+        run: echo "PYTHONPATH=$PWD" >> $GITHUB_ENV
+        
       - name: Start application in background
         run: |
-          nohup uvicorn app.main:app --host 127.0.0.1 --port 8181 &
+          uvicorn app.main:app --host 0.0.0.0 --port 8181 &
           sleep 5
-
-      - name: Run tests
         env:
           PYTHONPATH: ${{ github.workspace }}
-        run: pytest --junitxml=test_result.xml -v
+
+      - name: Run tests and save results
+        run: |
+          mkdir -p test_results
+          pytest tests/ -v --tb=short \
+            --junit-xml=test_results/junit.xml \
+            > test_results/output.txt 2>&1
+          echo $? > test_results/exit_code.txt
+        continue-on-error: true
 
       - name: Upload test results
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test_result
-          path: test_result.xml
+          path: test_results/
+          if-no-files-found: error
+
+      - name: Check if tests passed
+        run: |
+          exit_code=$(cat test_results/exit_code.txt)
+          if [ "$exit_code" -ne 0 ]; then
+            echo "Tests failed with exit code $exit_code"
+            exit 1
+          else
+            echo "All tests passed!"
+          fi
+
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          build-args: |
+            DEPLOY_REF=${{ github.sha }}
+          tags: |
+            ghcr.io/anzorcode05/catty-reminders-app:latest
+            ghcr.io/anzorcode05/catty-reminders-app:${{ github.sha }}
