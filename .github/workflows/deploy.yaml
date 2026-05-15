@@ -9,41 +9,42 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy to VM via SSH
+      - name: Deploy app via Docker
         uses: appleboy/ssh-action@v1
         with:
           host: course.prafdin.ru
           port: 3172
           username: anzorcode
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          timeout: 30m
           script: |
             set -e
-            APP_DIR="/home/anzorcode/app"
-            REPO_DIR="/home/anzorcode/catty-reminders-app"
-            ENV_FILE="$APP_DIR/.env"
-            COMMIT_SHA="${{ github.sha }}"
 
-            echo "CD Pipeline started"
-            echo "Release commit: $COMMIT_SHA"
-            cd $REPO_DIR
+            IMAGE_NAME="ghcr.io/anzorcode05/catty-reminders-app:${{ github.sha }}"
+            CONTAINER_NAME="catty-app"
 
-            echo "Updating code..."
-            git fetch origin
-            git checkout --detach $COMMIT_SHA
-            git reset --hard $COMMIT_SHA
+            echo "=== Docker deployment started ==="
 
-            DEPLOY_REF=$(git rev-parse HEAD)
-            echo "Commit hash: $DEPLOY_REF"
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u anzorcode05 --password-stdin
 
-            echo "DEPLOY_REF=$DEPLOY_REF" > $ENV_FILE
-            echo "Updated .env file"
+            docker stop $CONTAINER_NAME || true
+            docker rm $CONTAINER_NAME || true
 
-            echo "Installing dependencies in virtual environment..."
-            cd $APP_DIR
-            source venv/bin/activate
-            pip install -r $REPO_DIR/requirements.txt
+            docker pull $IMAGE_NAME
 
-            echo "Restarting application..."
-            sudo systemctl restart app
+            docker run -d \
+              --name $CONTAINER_NAME \
+              --restart always \
+              -p 8181:8181 \
+              $IMAGE_NAME
 
-            echo "CD Pipeline completed successfully"
+            sleep 3
+            if docker ps --filter "name=$CONTAINER_NAME" -q | grep -q .; then
+              echo "Container started successfully"
+            else
+              echo "Error: container failed to start"
+              docker logs $CONTAINER_NAME || true
+              exit 1
+            fi
+
+            echo "=== Deployment completed successfully ==="
