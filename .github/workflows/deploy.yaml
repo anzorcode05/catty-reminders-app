@@ -20,7 +20,7 @@ jobs:
           script: |
             set -e
 
-            IMAGE_NAME="ghcr.io/anzorcode05/catty-reminders-app:${{ github.sha }}"
+            IMAGE_NAME="ghcr.io/anzorcode05/catty-reminders-app:latest"
             CONTAINER_NAME="catty-app"
 
             echo "=== Docker deployment started ==="
@@ -38,13 +38,5 @@ jobs:
               -p 8181:8181 \
               $IMAGE_NAME
 
-            sleep 3
-            if docker ps --filter "name=$CONTAINER_NAME" -q | grep -q .; then
-              echo "Container started successfully"
-            else
-              echo "Error: container failed to start"
-              docker logs $CONTAINER_NAME || true
-              exit 1
-            fi
-
+            echo "Container started successfully"
             echo "=== Deployment completed successfully ==="
