@@ -31,9 +31,10 @@ jobs:
             export DB_DATABASE=catty_reminders
             export DB_USER=catty_user
             export DB_PASSWORD=catty_pass
-            docker compose down
+            docker compose down --remove-orphans
+            docker system prune -f
             docker compose pull
-            docker compose up -d --force-recreate --remove-orphans
+            docker compose up -d --force-recreate
             sleep 5
             if docker compose ps | grep -q "Up"; then
               echo "Stack started successfully"
